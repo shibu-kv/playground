@@ -1,31 +1,58 @@
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        type: string
-        required: true
-        description: "Version to release"
-      summary:
-        type: string
-        required: true
-        description: "Summary of this release purpose"
-  pull_request:
-    types:
-      - closed
+    workflow_dispatch:
+      inputs:
+        version:
+          type: string
+          required: true
+          description: "Version to release"
+        summary:
+          type: string
+          required: true
+          description: "Summary of this release purpose"
+    pull_request:
+      types:
+        - closed
 
-name: Release
-
+name : Gitflow Release
 jobs:
   release_workflow:
     runs-on: ubuntu-latest
     steps:
-      - name: gitflow-workflow-action release workflows
-        uses: hoangvvo/gitflow-workflow-action@0.3.7
+      - name : checkout
+        uses: actions/checkout@v4
+
+      - name: Set up npm
+        uses: actions/setup-node@v2
         with:
-          develop_branch: "develop"
-          main_branch: "main"
-          merge_back_from_main: true
-          version: ${{ inputs.version }}
-          release_summary: ${{ inputs.summary }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          node-version: '14'
+      
+      - name: Install dependencies
+        run: npm install -g auto-changelog
+
+      - name: Create Release Branch
+        run: |
+          git checkout -b release/${{ inputs.version }}
+    
+      - name: Update Changelog
+        run: |
+            auto-changelog -v ${{ inputs.version }}
+            git add CHANGELOG.md
+            git commit -m "Changelog updates for version ${{ inputs.version }}"
+            git push origin release/${{ inputs.version }}
+
+      - name: Create Pull Request
+        run: |
+          gh pr create --base main --head release/${{ inputs.version }} --title "Release ${{ inputs.version }}" --body "${{ inputs.summary }}"
+          gh pr create --base develop --head release/${{ inputs.version }} --title "Release ${{ inputs.version }}" --body "${{ inputs.summary }}"
+
+
+      - name: create release
+        run: |
+          git checkout main
+          git merge release/${{ inputs.version }}
+          git tag -a ${{ inputs.version }} -m "${{ inputs.summary }}"
+          git push origin main --tags
+          git checkout develop
+          git merge release/${{ inputs.version }}
+          git push origin develop
+
